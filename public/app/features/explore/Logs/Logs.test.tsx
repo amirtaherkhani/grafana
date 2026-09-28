@@ -202,7 +202,10 @@ describe('Logs', () => {
       explore: {
         ...initialExploreState,
         panes: {
-          left: makeExplorePaneState(),
+          left: {
+            ...makeExplorePaneState(),
+            ...(partialProps?.logsQueries ? { queries: partialProps.logsQueries } : {}),
+          },
         },
       },
     });
@@ -522,6 +525,50 @@ describe('Logs', () => {
       setup();
       const logsSection = screen.getByRole('radio', { name: 'Table' });
       expect(logsSection).toBeInTheDocument();
+    });
+
+    it('includes the selected row timestamp in a new-table permalink', async () => {
+      const frame = createDataFrame({
+        refId: 'A',
+        fields: [
+          { name: 'Time', type: FieldType.time, values: [1700000000000] },
+          { name: 'Line', type: FieldType.string, values: ['shared table row'] },
+          { name: 'severity', type: FieldType.string, values: ['info'] },
+          { name: 'tsNs', type: FieldType.string, values: ['1700000000000000123'] },
+          { name: 'id', type: FieldType.string, values: ['table-row-id'] },
+        ],
+      });
+      const row = makeLog({
+        uid: 'A_table-row-id',
+        rowId: 'table-row-id',
+        dataFrame: frame,
+        timeEpochMs: 1700000000000,
+        timeEpochNs: '1700000000000000123',
+        datasourceType: 'loki',
+      });
+      setup(
+        {
+          panelState: { logs: { visualisationType: 'table' } },
+          logsQueries: [{ refId: 'A', datasource: { type: 'loki', uid: 'loki' } }, { refId: 'B' }],
+          absoluteRange: { from: 1699999999000, to: 1700000001000 },
+        },
+        frame,
+        [row]
+      );
+      await userEvent.click(await screen.findByRole('button', { name: 'Copy link to log line' }));
+      await waitFor(() => expect(createAndCopyShortLink).toHaveBeenCalled());
+      const url = new URL(createAndCopyShortLink.mock.calls[0][0], 'http://localhost');
+      const state = JSON.parse(url.searchParams.get('left') ?? '{}');
+      expect(state.queries).toEqual([
+        {
+          refId: 'A',
+          datasource: { type: 'loki', uid: 'loki' },
+          timestampNs: '1700000000000000123',
+          timestampNsRange: { from: 1699999999000, to: 1700000001000 },
+        },
+        { refId: 'B' },
+      ]);
+      expect(state.panelsState.logs.id).toBe('table-row-id');
     });
 
     it('should change visualisation to table on toggle (loki)', async () => {

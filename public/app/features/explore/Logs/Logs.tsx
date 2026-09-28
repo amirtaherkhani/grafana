@@ -48,7 +48,7 @@ import {
   type Themeable2,
   withTheme2,
 } from '@grafana/ui';
-import { createAndCopyShortLink, getLogsPermalinkRange } from 'app/core/utils/shortLinks';
+import { createAndCopyShortLink, getLogsPermalink } from 'app/core/utils/shortLinks';
 import { ControlledLogRows } from 'app/features/logs/components/ControlledLogRows';
 import { LogLineContext } from 'app/features/logs/components/panel/LogLineContext';
 import { LogList, type LogListOptions } from 'app/features/logs/components/panel/LogList';
@@ -537,7 +537,15 @@ const UnthemedLogs: React.FunctionComponent<Props> = (props: Props) => {
           sortOrder: logsSortOrder,
         },
       };
-      urlState.range = getLogsPermalinkRange(row, logRows, absoluteRange);
+      const { range, queries } = getLogsPermalink(
+        row,
+        logRows,
+        absoluteRange,
+        urlState.queries,
+        getState().explore.panes[exploreId]?.datasourceInstance?.type
+      );
+      urlState.range = range;
+      urlState.queries = queries;
 
       // append changed urlState to baseUrl
       const serializedState = serializeStateToUrlParam(urlState);
@@ -576,10 +584,24 @@ const UnthemedLogs: React.FunctionComponent<Props> = (props: Props) => {
         },
       };
 
-      urlState.range = {
-        from: toUtc(props.range.from).valueOf().toString(),
-        to: toUtc(props.range.to).valueOf().toString(),
-      };
+      const frame = props.logsFrames?.[tableFrameIndex];
+      const row = logRows.find((row) => row.rowId === logId && row.dataFrame.refId === frame?.refId);
+      if (row) {
+        const { range, queries } = getLogsPermalink(
+          row,
+          logRows,
+          absoluteRange,
+          urlState.queries,
+          getState().explore.panes[exploreId]?.datasourceInstance?.type
+        );
+        urlState.range = range;
+        urlState.queries = queries;
+      } else {
+        urlState.range = {
+          from: toUtc(props.range.from).valueOf().toString(),
+          to: toUtc(props.range.to).valueOf().toString(),
+        };
+      }
 
       // append changed urlState to baseUrl
       const serializedState = serializeStateToUrlParam(urlState);
@@ -594,7 +616,19 @@ const UnthemedLogs: React.FunctionComponent<Props> = (props: Props) => {
 
       return url;
     },
-    [displayedFields, exploreId, logsSortOrder, panelState, props.range.from, props.range.to, visualisationType]
+    [
+      absoluteRange,
+      displayedFields,
+      exploreId,
+      logRows,
+      logsSortOrder,
+      panelState,
+      props.logsFrames,
+      props.range.from,
+      props.range.to,
+      tableFrameIndex,
+      visualisationType,
+    ]
   );
 
   const onPinToContentOutlineClick = useCallback(

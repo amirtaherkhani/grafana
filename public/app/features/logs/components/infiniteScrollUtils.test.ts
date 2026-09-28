@@ -37,11 +37,11 @@ describe('canScrollBottom', () => {
     });
   });
 
-  it('sets startNs to the newest line when loading newer logs', () => {
+  it('sets startNs one nanosecond after the newest line when loading newer logs', () => {
     expect(canScrollBottom(getVisibleRange(rows), currentRange, timeZone, LogsSortOrder.Ascending)).toEqual({
       from: 40_000,
       to: 100_000,
-      startNs: '40000000000',
+      startNs: '40000000001',
     });
   });
 });
@@ -51,7 +51,7 @@ describe('canScrollTop', () => {
     expect(canScrollTop(getVisibleRange(rows), currentRange, timeZone, LogsSortOrder.Descending)).toEqual({
       from: 40_000,
       to: 100_000,
-      startNs: '40000000000',
+      startNs: '40000000001',
     });
   });
 
@@ -76,9 +76,9 @@ describe('withLokiNsBound', () => {
   });
 
   it('copies startNs onto a Loki query and omits endNs', () => {
-    expect(withLokiNsBound({ refId: 'A' }, { from: 1, to: 2, startNs: '40000000000' }, 'loki')).toEqual({
+    expect(withLokiNsBound({ refId: 'A' }, { from: 1, to: 2, startNs: '40000000001' }, 'loki')).toEqual({
       refId: 'A',
-      startNs: '40000000000',
+      startNs: '40000000001',
     });
   });
 

@@ -1,6 +1,6 @@
 import memoizeOne from 'memoize-one';
 
-import { type AbsoluteTimeRange, type LogRowModel, type UrlQueryMap } from '@grafana/data';
+import { type AbsoluteTimeRange, type DataQuery, type LogRowModel, type UrlQueryMap } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { config, locationService } from '@grafana/runtime';
 import { sceneGraph, type SceneTimeRangeLike, type VizPanel } from '@grafana/scenes';
@@ -155,24 +155,34 @@ function getPreviousLog(row: LogRowModel, allLogs: LogRowModel[]): LogRowModel |
   return null;
 }
 
-export function getLogsPermalinkRange(row: LogRowModel, rows: LogRowModel[], absoluteRange: AbsoluteTimeRange) {
-  // With infinite scrolling, the time range of the log line can be after the absolute range or beyond the request line limit, so we need to adjust
-  // Look for the previous sibling log, and use its timestamp
+export function getLogsPermalink(
+  row: LogRowModel,
+  rows: LogRowModel[],
+  absoluteRange: AbsoluteTimeRange,
+  queries: DataQuery[] = [],
+  datasourceType?: string
+) {
   const allLogs = rows.filter((logRow) => logRow.dataFrame.refId === row.dataFrame.refId);
   const prevLog = getPreviousLog(row, allLogs);
-
-  if (row.timeEpochMs > absoluteRange.to && !prevLog) {
-    // Because there's no sibling and the current `to` is oldest than the log, we have no reference we can use for the interval
-    // This only happens when you scroll into the future and you want to share the first log of the list
-    return {
-      from: new Date(absoluteRange.from).toISOString(),
-      // Slide 1ms otherwise it's very likely to be omitted in the results
-      to: new Date(row.timeEpochMs + 1).toISOString(),
-    };
-  }
+  const from = absoluteRange.from;
+  const to =
+    row.timeEpochMs > absoluteRange.to && !prevLog
+      ? row.timeEpochMs + 1
+      : prevLog
+        ? prevLog.timeEpochMs
+        : absoluteRange.to;
 
   return {
-    from: new Date(absoluteRange.from).toISOString(),
-    to: new Date(prevLog ? prevLog.timeEpochMs : absoluteRange.to).toISOString(),
+    range: {
+      from: new Date(from).toISOString(),
+      to: new Date(to).toISOString(),
+    },
+    queries: queries.map((query) =>
+      row.timeEpochNs &&
+      query.refId === row.dataFrame.refId &&
+      (query.datasource?.type ?? row.datasourceType ?? datasourceType) === 'loki'
+        ? { ...query, timestampNs: row.timeEpochNs, timestampNsRange: { from, to } }
+        : query
+    ),
   };
 }

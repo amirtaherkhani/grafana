@@ -12,7 +12,7 @@ import {
   createShortLink,
   createAndCopyShortLink,
   createDashboardShareUrl,
-  getLogsPermalinkRange,
+  getLogsPermalink,
   buildShortUrl,
 } from './shortLinks';
 
@@ -266,11 +266,12 @@ describe('createDashboardShareUrl', () => {
   });
 });
 
-describe('getLogsPermalinkRange', () => {
+describe('getLogsPermalink', () => {
   let row: LogRowModel, rows: LogRowModel[];
   beforeEach(() => {
     row = createLogRow({
       timeEpochMs: 1111112222222,
+      timeEpochNs: '',
     });
     rows = [
       createLogRow({
@@ -285,7 +286,7 @@ describe('getLogsPermalinkRange', () => {
       from: 1111111111111,
       to: 1111114444444,
     };
-    expect(getLogsPermalinkRange(row, rows, range)).toEqual({
+    expect(getLogsPermalink(row, rows, range).range).toEqual({
       from: '2005-03-18T01:58:31.111Z',
       to: '2005-03-18T02:35:33.333Z',
     });
@@ -296,9 +297,60 @@ describe('getLogsPermalinkRange', () => {
       from: 1111111111110,
       to: 1111111111111,
     };
-    expect(getLogsPermalinkRange(row, [row], range)).toEqual({
+    expect(getLogsPermalink(row, [row], range).range).toEqual({
       from: '2005-03-18T01:58:31.110Z',
       to: '2005-03-18T02:17:02.223Z',
     });
   });
+});
+
+describe('getLogsPermalink nanoseconds', () => {
+  const range = { from: 1700000000000, to: 1700000001000 };
+  const makeRow = (overrides: Partial<LogRowModel> = {}) => {
+    const row = createLogRow({
+      timeEpochMs: 1700000000000,
+      timeEpochNs: '1700000000000000123',
+      datasourceType: 'loki',
+      ...overrides,
+    });
+    row.dataFrame.refId = 'A';
+    return row;
+  };
+
+  it('attaches nanoseconds only to the selected Loki query and returns the legacy range', () => {
+    const row = makeRow();
+    expect(getLogsPermalink(row, [row], range, [{ refId: 'A' }, { refId: 'B' }])).toEqual({
+      range: { from: '2023-11-14T22:13:20.000Z', to: '2023-11-14T22:13:21.000Z' },
+      queries: [
+        {
+          refId: 'A',
+          timestampNs: '1700000000000000123',
+          timestampNsRange: { from: 1700000000000, to: 1700000001000 },
+        },
+        { refId: 'B' },
+      ],
+    });
+  });
+
+  it('preserves the millisecond range when the selected row shares its end millisecond', () => {
+    const row = makeRow();
+    expect(getLogsPermalink(row, [row], { from: 1699999999000, to: 1700000000000 }, [{ refId: 'A' }])).toEqual({
+      range: { from: '2023-11-14T22:13:19.000Z', to: '2023-11-14T22:13:20.000Z' },
+      queries: [
+        {
+          refId: 'A',
+          timestampNs: '1700000000000000123',
+          timestampNsRange: { from: 1699999999000, to: 1700000000000 },
+        },
+      ],
+    });
+  });
+
+  it.each([{ timeEpochNs: '' }, { datasourceType: 'elasticsearch' }])(
+    'preserves the query without nanos or for a different datasource: %j',
+    (overrides) => {
+      const row = makeRow(overrides);
+      expect(getLogsPermalink(row, [row], range, [{ refId: 'A' }]).queries).toEqual([{ refId: 'A' }]);
+    }
+  );
 });
